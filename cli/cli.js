@@ -1,0 +1,308 @@
+#!/usr/bin/env node
+
+/*
+  Copyright © 2019-2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+const { Command } = require("commander");
+const program = new Command(),
+  fs = require("fs"),
+  path = require("path"),
+  tmp = require("tmp"),
+  AdmZip = require("adm-zip"),
+  bl = require("./lib/package/bundleLinter.js"),
+  rc = require("./lib/package/apigeelintrc.js"),
+  pkj = require("./package.json"),
+  downloader = require("./lib/package/downloader.js"),
+  bundleType = require("./lib/package/BundleTypes.js"),
+  debug = require("debug"),
+  defaults = {
+    formatter: "json.js",
+    complexConditionTermCount: 12,
+    policyCountLimit: 100,
+    profile: "apigee",
+  };
+
+/**
+ * findBundle returns an array of three items:
+ * 0: the validated source path, useful for resolving .apigeelintrc
+ * 1: the actual directory, which may be a tmp dir if the source path is a zip
+ * 2: either 'zip' or 'filesystem'
+ **********************************************/
+const findBundle = (p) => {
+  // handle zipped bundles
+  if (p.endsWith(".zip") && fs.existsSync(p) && fs.statSync(p).isFile()) {
+    const tmpdir = tmp.dirSync({
+      prefix: `apigeelint-${path.basename(p)}`,
+      keep: false,
+      unsafeCleanup: true, // this does not seem to work in apigeelint
+    });
+    // make sure to cleanup when the process exits
+    process.on("exit", function () {
+      tmpdir.removeCallback();
+    });
+    const zip = new AdmZip(p);
+    zip.extractAllTo(tmpdir.name, false);
+    const found = findBundle(tmpdir.name);
+    return [p, found[1], "zip"];
+  }
+
+  if (p.endsWith("/")) {
+    p = p.slice(0, -1);
+  }
+  const subdirnames = [
+    bundleType.BundleType.SHAREDFLOW,
+    bundleType.BundleType.APIPROXY,
+  ];
+  if (subdirnames.find((n) => p.endsWith(n)) && fs.statSync(p).isDirectory()) {
+    return [p, p, "filesystem"];
+  }
+  const subdirs = subdirnames.map((d) => path.join(p, d));
+
+  for (let i = 0; i < subdirs.length; i++) {
+    if (fs.existsSync(subdirs[i]) && fs.statSync(subdirs[i]).isDirectory()) {
+      if (
+        !fs.existsSync(subdirs[1 - i]) ||
+        !fs.statSync(subdirs[1 - i]).isDirectory()
+      ) {
+        return [subdirs[i], subdirs[i], "filesystem"];
+      }
+      throw new Error(
+        "that path appears to contain both an apiproxy and a sharedflowbundle",
+      );
+    }
+  }
+  throw new Error(
+    "that path does not appear to resolve to an apiproxy or sharedflowbundle",
+  );
+};
+
+(async function main() {
+  program
+    .version(pkj.version)
+    .option(
+      "-s, --path <path>",
+      "Path of the proxy or sharedflow to analyze (directory or zipped bundle)",
+    )
+    .option(
+      "-d, --download [value]",
+      "Download the API proxy or sharedflow to analyze. Exclusive of -s / --path. Example: org:ORG,API:proxyname or org:ORG,sf:SHAREDFLOWNAME",
+    )
+    .option(
+      "-f, --formatter [value]",
+      `Specify formatters (default: ${defaults.formatter})`,
+    )
+    .option("-w, --write [value]", "file path to write results")
+    .option(
+      "-e, --excluded [value]",
+      "The comma separated list of tests to exclude (default: none)",
+    )
+    .option(
+      "-x, --externalPluginsDirectory [value]",
+      "Relative or full path to an external plugins directory",
+    )
+    .option(
+      "-q, --quiet",
+      "do not emit the report to stdout. (can use --write option to write to file)",
+    )
+    .option(
+      "--list",
+      "do not scan, instead list the available plugins and formatters",
+    )
+    .option(
+      "--maxWarnings [value]",
+      "Number of warnings to trigger nonzero exit code (default: -1)",
+    )
+    .option(
+      "--complexConditionTermCount [value]",
+      `Maximum number of terms in a condition before it is considered too complex by CC004 (default: ${defaults.complexConditionTermCount})`,
+    )
+    .option(
+      "--policyCountLimit [value]",
+      `Maximum number of policies in a bundle before it is considered too complex by BN006 (default: ${defaults.policyCountLimit})`,
+    )
+    .option(
+      "--profile [value]",
+      `Either apigee or apigeex (default: ${defaults.profile})`,
+    )
+    .option(
+      "--norc",
+      "do not search for and use the .apigeelintrc file for settings",
+    )
+    .option(
+      "--ignoreDirectives",
+      "ignore any directives within XML files that disable warnings",
+    )
+    .option(
+      "--po025-no-retry",
+      "disables the retry logic in PO025, when eslint finds no eslint.config.js",
+    )
+    .option(
+      "--no-bundled-rules",
+      "do not auto-load the custom rules bundled with this CLI distribution",
+    );
+
+  program.addHelpText(
+    "after",
+    `
+    Examples:
+       apigeelint -f table.js -s sampleProxy/apiproxy
+       apigeelint -f table.js -s path/to/your/apiproxy.zip
+       apigeelint -f table.js --download org:my-org,api:my-proxy\n`,
+  );
+
+  program.parse(process.argv);
+  const options = program.opts();
+
+  // Custom rules authored through the Rule Studio are bundled with this CLI
+  // distribution in the ./externalPlugins directory (resolved relative to this
+  // file, so it works for global/npx/Docker installs). Auto-load them unless
+  // the user supplied their own -x directory or passed --no-bundled-rules.
+  const BUNDLED_EXTERNAL_PLUGINS_DIR = path.join(__dirname, "externalPlugins");
+  if (
+    !options.externalPluginsDirectory &&
+    options.bundledRules !== false &&
+    fs.existsSync(BUNDLED_EXTERNAL_PLUGINS_DIR)
+  ) {
+    options.externalPluginsDirectory = BUNDLED_EXTERNAL_PLUGINS_DIR;
+  }
+
+  if (options.list) {
+    console.log("available plugins: " + bl.listRuleIds().join(", ") + "\n");
+    console.log("available formatters: " + bl.listFormatters().join(", "));
+    if (
+      options.externalPluginsDirectory &&
+      fs.existsSync(options.externalPluginsDirectory)
+    ) {
+      console.log(
+        "\n" +
+          "available external plugins: " +
+          bl.listExternalRuleIds(options.externalPluginsDirectory).join(", ") +
+          "\n",
+      );
+    }
+    process.exit(0);
+  }
+
+  if (options.download) {
+    if (options.path) {
+      console.log(
+        "you must specify either the -s /--path option, or the -d /--download option. Not both.",
+      );
+      process.exit(1);
+    }
+    // This will work only with Apigee X/hybrid
+    options.path = await downloader.downloadBundle(options.download);
+  }
+
+  if (!options.path) {
+    console.log(
+      "you must specify the -s option, or the long form of that: --path ",
+    );
+    process.exit(1);
+  }
+
+  let [sourcePath, resolvedPath, sourceType] = findBundle(options.path);
+
+  // apply RC file
+  if (!options.norc) {
+    const rcSettings = rc.readRc([".apigeelintrc"], sourcePath);
+    if (rcSettings) {
+      Object.keys(rcSettings)
+        .filter((key) => key != "path" && key != "list" && !options[key])
+        .forEach((key) => {
+          debug("apigeelint:rc")(`applying [${key}] = ${rcSettings[key]}`);
+          options[key] = rcSettings[key];
+        });
+    }
+  }
+
+  if (
+    options.complexConditionTermCount &&
+    options.complexConditionTermCount < 1
+  ) {
+    console.log(
+      "Specify a value greater than zero for complexConditionTermCount.\n",
+    );
+    process.exit(1);
+  }
+
+  if (options.policyCountLimit && options.policyCountLimit < 1) {
+    console.log("Specify a value greater than zero for policyCountLimit.\n");
+    process.exit(1);
+  }
+
+  const configuration = {
+    debug: true,
+    source: {
+      type: sourceType,
+      path: resolvedPath,
+      sourcePath: sourcePath,
+      bundleType: resolvedPath.endsWith(bundleType.BundleType.SHAREDFLOW)
+        ? bundleType.BundleType.SHAREDFLOW
+        : bundleType.BundleType.APIPROXY,
+    },
+    complexConditionTermCount:
+      Number(options.complexConditionTermCount) ||
+      defaults.complexConditionTermCount,
+    policyCountLimit:
+      Number(options.policyCountLimit) || defaults.policyCountLimit,
+    externalPluginsDirectory: options.externalPluginsDirectory,
+    excluded: {},
+    maxWarnings: -1,
+    profile: defaults.profile,
+  };
+
+  if (!isNaN(options.maxWarnings)) {
+    configuration.maxWarnings = Number.parseInt(options.maxWarnings);
+  }
+
+  if (options.formatter) {
+    configuration.formatter = options.formatter || defaults.formatter;
+  }
+
+  if (options.quiet) {
+    configuration.output = "none";
+  }
+
+  if (options.ignoreDirectives) {
+    configuration.ignoreDirectives = true;
+  }
+
+  if (options.po025NoRetry === true) {
+    configuration.po025NoRetry = true;
+  }
+
+  if (options.excluded && typeof options.excluded === "string") {
+    configuration.excluded = options.excluded
+      .split(",")
+      .map((s) => s.trim())
+      .reduce((acc, item) => ((acc[item] = true), acc), {});
+  }
+
+  if (options.write) {
+    configuration.writePath = options.write;
+  }
+
+  if (options.profile && ["apigee", "apigeex"].includes(options.profile)) {
+    configuration.profile = options.profile;
+  }
+
+  bl.lint(configuration, (bundle) => {
+    debug("apigeelint:cli")(`exitCode ${bundle.lintExitCode}`);
+    //console.error(`exitCode ${bundle.lintExitCode}`);
+    process.exit(bundle.lintExitCode);
+  });
+})();

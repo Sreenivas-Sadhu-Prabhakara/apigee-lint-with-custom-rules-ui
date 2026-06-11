@@ -1,0 +1,5 @@
+<GetOAuthV1Info name="OAuth-Get-Info-1">
+    <ConsumerKey ref="{flow.variable}">{value}</ConsumerKey>
+    <RequestToken ref="{flow.variable}">{request token}</RequestToken>
+    <AccessToken ref="{flow.variable}">{access token}</AccessToken>
+</GetOAuthV1Info>

@@ -1,0 +1,126 @@
+<ProxyEndpoint name="endpoint1">
+  <Description>Proxy Endpoint 1</Description>
+  <HTTPProxyConnection>
+    <BasePath>/ST002-step-hygiene</BasePath>
+    <Properties/>
+    <VirtualHost>secure</VirtualHost>
+  </HTTPProxyConnection>
+
+  <FaultRules/>
+
+  <DefaultFaultRule name="DefaultFaultRule">
+    <AlwaysEnforce>true</AlwaysEnforce>
+    <Step>
+      <!-- error: multiple name elements -->
+      <Name>AM-AddCORSHeaders</Name>
+      <Name>AM-AddCORSHeaders</Name>
+    </Step>
+    <Step>
+        <!-- no error: empty faultrules uncommon and unnecessary here, but ignored -->
+        <FaultRules/>
+      <Name>AM-GenericError</Name>
+    </Step>
+    <Step>
+      <!-- error: Name value should not have leading or trailing ws -->
+      <Name> AM-AddCORSHeaders </Name>
+    </Step>
+    <AlwaysEnforce>false</AlwaysEnforce>
+  </DefaultFaultRule>
+
+  <PreFlow name="PreFlow">
+    <Request>
+    </Request>
+    <Response>
+      <Step>
+        <!-- error: Multiple Condition elements for Step -->
+        <Name>AM-CleanResponseHeaders</Name>
+        <Condition>request.verb != "GET"</Condition>
+        <Condition>request.verb = "OPTIONS"</Condition>
+      </Step>
+    </Response>
+  </PreFlow>
+  <PostFlow name="PostFlow">
+    <Request>
+      <Step>
+        <!-- error: empty Name element -->
+        <Name></Name>
+      </Step>
+    </Request>
+    <Response>
+      <Step>
+        <!-- error no children at all -->
+      </Step>
+      <Step>
+        <!-- error missing Name element -->
+        <Condition>request.verb = "OPTIONS"</Condition>
+      </Step>
+
+      <Step>
+        <Name>AM-PostFlow</Name>
+        <!-- error unknown extraneous child element -->
+        <Step>
+          <Name>AM-PostFlow</Name>
+        </Step>
+      </Step>
+
+      <Step>
+        <Name>
+          <!-- error unknown extraneous child element -->
+           <Step>AM-PostFlow</Step>
+        </Name>
+      </Step>
+
+    </Response>
+  </PostFlow>
+  <PostClientFlow name="PostFlow">
+    <Request>
+    </Request>
+    <Response>
+    </Response>
+  </PostClientFlow>
+
+  <Flows>
+
+    <Flow name="flow1">
+      <Request>
+        <Step>
+          <!-- error: empty Condition element -->
+          <Name>AM-PostFlow</Name>
+          <Condition></Condition>
+        </Step>
+        <Step>
+          <!-- error: empty Condition element -->
+          <Name>AM-PostFlow</Name>
+          <Condition> </Condition>
+        </Step>
+        <Step>
+          <!-- error: Stray element under Condition element -->
+          <Name>AM-PostFlow</Name>
+          <Condition>
+            <Name>proxy.pathsuffix = "/foo"</Name>
+          </Condition>
+        </Step>
+      </Request>
+      <Response>
+        <Step>
+          <Name>AM-Response</Name>
+        </Step>
+      </Response>
+      <Condition>(proxy.pathsuffix MatchesPath "/t1") and (request.verb = "GET")</Condition>
+    </Flow>
+
+    <Flow name="unknown request">
+      <Request>
+        <Step>
+          <Name>RF-UnknownRequest</Name>
+        </Step>
+      </Request>
+      <Response>
+      </Response>
+    </Flow>
+
+  </Flows>
+
+  <RouteRule name="NoRouteRule"/>
+
+</ProxyEndpoint>

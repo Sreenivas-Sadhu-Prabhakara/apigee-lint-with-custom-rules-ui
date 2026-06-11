@@ -1,0 +1,54 @@
+/*
+  Copyright © 2019-2023,2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+const ruleId = require("../lintUtil.js").getRuleId(),
+  debug = require("debug")("apigeelint:" + ruleId);
+
+const plugin = {
+  ruleId,
+  name: "Extract Variables with XMLPayload",
+  message:
+    "A check for a body element must be performed before policy execution.",
+  fatal: false,
+  severity: 1, //1=warning, 2=error
+  nodeType: "Step",
+  enabled: true,
+};
+
+const EVAttachmentChecker = require("./_extractVariablesAttachmentCheck.js");
+const checker = new EVAttachmentChecker(plugin, "XMLPayload", debug);
+
+const onProxyEndpoint = function (endpoint, cb) {
+  debug("onProxyEndpoint");
+  const flagged = checker.check(endpoint);
+  if (typeof cb == "function") {
+    cb(null, flagged);
+  }
+};
+
+const onTargetEndpoint = function (endpoint, cb) {
+  debug("onTargetEndpoint");
+  const flagged = checker.check(endpoint);
+  if (typeof cb == "function") {
+    cb(null, flagged);
+  }
+};
+
+module.exports = {
+  plugin,
+  onProxyEndpoint,
+  onTargetEndpoint,
+};

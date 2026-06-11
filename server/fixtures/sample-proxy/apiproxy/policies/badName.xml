@@ -1,0 +1,7 @@
+<AssignMessage name="badName">
+  <DisplayName>badName</DisplayName>
+  <AssignTo createNew="false" transport="http" type="request"/>
+  <Set>
+    <Header name="X-Demo">true</Header>
+  </Set>
+</AssignMessage>

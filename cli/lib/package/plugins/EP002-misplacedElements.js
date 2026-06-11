@@ -1,0 +1,367 @@
+﻿/*
+Copyright © 2019-2023,2025-2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+const ruleId = require("../lintUtil.js").getRuleId(),
+  debug = require("debug")("apigeelint:" + ruleId),
+  xpath = require("xpath"),
+  sslInfoCheck = require("./_sslInfoCheck.js");
+
+const plugin = {
+  ruleId,
+  name: "Check for commonly misplaced elements",
+  message: "For example, a Flow element should be a child of Flows parent.",
+  fatal: false,
+  severity: 2, // error
+  nodeType: "Endpoint",
+  enabled: true,
+};
+
+let bundleProfile = "apigee";
+const onBundle = function (bundle, cb) {
+  if (bundle.profile) {
+    bundleProfile = bundle.profile;
+  }
+  if (typeof cb == "function") {
+    cb(null, false);
+  }
+};
+
+const onProxyEndpoint = function (endpoint, cb) {
+  debug("onProxyEndpoint");
+  const checker = new EndpointChecker(endpoint);
+  const flagged = checker.check();
+  if (typeof cb == "function") {
+    cb(null, flagged);
+  }
+  return flagged;
+};
+
+const onTargetEndpoint = function (endpoint, cb) {
+  debug("onTargetEndpoint");
+  const checker = new EndpointChecker(endpoint);
+  const flagged = checker.check();
+  if (typeof cb == "function") {
+    cb(null, flagged);
+  }
+  return flagged;
+};
+
+const _markEndpoint = (endpoint, message, line, column) => {
+  const result = {
+    ruleId: plugin.ruleId,
+    severity: plugin.severity,
+    nodeType: plugin.nodeType,
+    message,
+    line,
+    column,
+  };
+  // discard duplicates
+  if (
+    !line ||
+    !column ||
+    !endpoint.report.messages.find((m) => m.line == line && m.column == column)
+  ) {
+    endpoint.addMessage(result);
+  }
+};
+
+const allowedParents = {
+  Step: ["Request", "Response", "FaultRule", "DefaultFaultRule", "SharedFlow"],
+  Request: ["PreFlow", "PostFlow", "Flow", "PostClientFlow", "HTTPMonitor"],
+  Response: ["PreFlow", "PostFlow", "Flow", "PostClientFlow", "EventFlow"],
+  Flows: ["ProxyEndpoint", "TargetEndpoint"],
+  Flow: ["Flows"],
+  RouteRule: ["ProxyEndpoint"],
+  DefaultFaultRule: ["ProxyEndpoint", "TargetEndpoint"],
+  HTTPTargetConnection: ["TargetEndpoint"],
+  LoadBalancer: ["HTTPTargetConnection"],
+  HealthMonitor: ["HTTPTargetConnection"],
+  HTTPMonitor: ["HealthMonitor"],
+  TCPMonitor: ["HealthMonitor"],
+  SuccessResponse: ["HTTPMonitor"],
+};
+
+const allowedChildren = {
+  Step: ["Name", "Condition", "FaultRules"],
+  Request: ["Step"],
+  "Request-child-of-HTTPMonitor": [
+    "ConnectTimeoutInSec",
+    "SocketReadTimeoutInSec",
+    "UseTargetServerSSLInfo",
+    "Payload",
+    "IsSSL",
+    "TrustAllSSL",
+    "Port",
+    "Verb",
+    "Path",
+    "Header",
+    "IncludeHealthCheckIdHeader",
+  ],
+  Response: ["Step"],
+  Flows: ["Flow"],
+  Flow: ["Description", "Request", "Response", "Condition"],
+  RouteRule: ["Condition", "TargetEndpoint", "URL", "IntegrationEndpoint"],
+  DefaultFaultRule: ["Step", "AlwaysEnforce", "Condition"],
+  HTTPTargetConnection: [
+    "LoadBalancer",
+    "Properties",
+    "Path",
+    "HealthMonitor",
+    "URL",
+    "SSLInfo",
+    "Authentication",
+  ],
+  LoadBalancer: [
+    "Algorithm",
+    "Server",
+    "MaxFailures",
+    "ServerUnhealthyResponse",
+    "RetryEnabled",
+    "TargetDisableSecs",
+  ],
+  HealthMonitor: ["IsEnabled", "IntervalInSec", "HTTPMonitor", "TCPMonitor"],
+  HTTPMonitor: ["Request", "SuccessResponse"],
+  TCPMonitor: ["ConnectTimeoutInSec", "Port"],
+  SuccessResponse: ["ResponseCode", "Header"],
+  ProxyEndpoint: [
+    "PreFlow",
+    "PostFlow",
+    "EventFlow",
+    "Flows",
+    "RouteRule",
+    "PostClientFlow",
+    "Description",
+    "FaultRules",
+    "DefaultFaultRule",
+    "HTTPProxyConnection",
+  ],
+  TargetEndpoint: [
+    "PreFlow",
+    "PostFlow",
+    "EventFlow",
+    "Flows",
+    "Description",
+    "FaultRules",
+    "DefaultFaultRule",
+    "HostedTarget",
+    "LocalTargetConnection",
+    "HTTPTargetConnection",
+  ],
+  SharedFlow: ["Step"],
+};
+
+class EndpointChecker {
+  constructor(endpoint) {
+    debug(
+      "EndpointChecker ctor (%s) (%s)",
+      endpoint.getName(),
+      endpoint.getType(),
+    );
+    this.endpoint = endpoint;
+    this.endpointType = endpoint.getType(); // ProxyEndpoint, TargetEndpoint, SharedFlow
+    this.flagged = false;
+  }
+
+  check() {
+    try {
+      const self = this;
+
+      const ep = self.endpointType,
+        topLevelChildren = xpath.select("*", self.endpoint.element);
+      topLevelChildren.forEach((child) => {
+        if (allowedChildren[ep].indexOf(child.tagName) < 0) {
+          self.flagged = true;
+          _markEndpoint(
+            self.endpoint,
+            `Invalid ${child.tagName} element`,
+            child.lineNumber,
+            child.columnNumber,
+          );
+        }
+      });
+
+      // 1st level children that must have at most one instance: Flows, DFR
+      ["Flows", "DefaultFaultRule", "FaultRules"].forEach((elementName) => {
+        const elements = xpath.select(elementName, self.endpoint.element);
+        if (elements.length != 0 && elements.length != 1) {
+          self.flagged = true;
+          elements
+            .slice(1)
+            .forEach((element) =>
+              _markEndpoint(
+                self.endpoint,
+                `Extra ${elementName} element`,
+                element.lineNumber,
+                element.columnNumber,
+              ),
+            );
+        }
+      });
+
+      // Request, Response, Step, Flow, DefaultFaultRule, RouteRule
+      const condition = Object.keys(allowedParents)
+        .map((n) => `self::${n}`)
+        .join(" or ");
+      const elements = xpath.select(`//*[${condition}]`, self.endpoint.element);
+      elements.forEach((element) => {
+        const tagName = element.tagName;
+        // misplaced children of toplevel elements are covered above
+        if (
+          element.parentNode.tagName != "ProxyEndpoint" &&
+          element.parentNode.tagName != "TargetEndpoint"
+        ) {
+          if (allowedParents[tagName].indexOf(element.parentNode.tagName) < 0) {
+            self.flagged = true;
+            _markEndpoint(
+              self.endpoint,
+              `Misplaced ${tagName} element child of ${element.parentNode.tagName}`,
+              element.lineNumber,
+              element.columnNumber,
+            );
+          }
+        }
+        const children = xpath.select("*", element);
+        children.forEach((child) => {
+          // special case Request, there are two of them
+          const t =
+            tagName == "Request" && element.parentNode.tagName == "HTTPMonitor"
+              ? "Request-child-of-HTTPMonitor"
+              : tagName;
+
+          if (allowedChildren[t].indexOf(child.tagName) < 0) {
+            self.flagged = true;
+            _markEndpoint(
+              self.endpoint,
+              `Misplaced '${child.tagName}' element child of ${tagName}`,
+              child.lineNumber,
+              child.columnNumber,
+            );
+          }
+        });
+      });
+
+      // in apigeex, exactly one of LocalTarget and HTTPTarget is required
+      if (ep == "TargetEndpoint") {
+        const supportedTargetTypes = [
+          "LocalTargetConnection",
+          "HTTPTargetConnection",
+        ];
+        if (bundleProfile == "apigee") {
+          supportedTargetTypes.push("HostedTarget");
+        }
+        const condition = supportedTargetTypes
+          .map((n) => `self::${n}`)
+          .join(" or ");
+
+        const targetChildren = xpath.select(
+          `*[${condition}]`,
+          self.endpoint.element,
+        );
+        if (targetChildren.length == 0) {
+          self.flagged = true;
+          _markEndpoint(
+            self.endpoint,
+            `Missing one of [${supportedTargetTypes.join(",")}]`,
+            1,
+            2,
+          );
+        } else if (targetChildren.length != 1) {
+          self.flagged = true;
+          targetChildren
+            .slice(1)
+            .forEach((configElement) =>
+              _markEndpoint(
+                self.endpoint,
+                `${configElement.tagName} element conflicts with ${targetChildren[0].tagName} on line ${targetChildren[0].lineNumber}`,
+                configElement.lineNumber,
+                configElement.columnNumber,
+              ),
+            );
+        }
+
+        // check SSLInfo if it exists
+        const htc = xpath.select(`HTTPTargetConnection`, self.endpoint.element);
+        if (htc.length > 0) {
+          const sslinfo = xpath.select(`SSLInfo`, htc[0]);
+          if (sslinfo.length > 0) {
+            const flag = (message, child) => {
+              self.flagged = true;
+              _markEndpoint(
+                self.endpoint,
+                message,
+                child.lineNumber,
+                child.columnNumber,
+              );
+            };
+            sslInfoCheck.check(sslinfo[0], flag);
+          }
+        }
+
+        // in HealthMonitor, exactly one of HTTPMonitor or TCPMonitor is required
+        const healthMonitors = xpath.select(
+          `HTTPTargetConnection/HealthMonitor`,
+          self.endpoint.element,
+        );
+
+        if (healthMonitors.length > 1) {
+          self.flagged = true;
+          healthMonitors
+            .slice(1)
+            .forEach((elt) =>
+              _markEndpoint(
+                self.endpoint,
+                `Redundant HealthMonitor element`,
+                elt.lineNumber,
+                elt.columnNumber,
+              ),
+            );
+        }
+        if (healthMonitors.length > 0) {
+          const condition = ["HTTP", "TCP"]
+            .map((n) => `self::${n}Monitor`)
+            .join(" or ");
+          const monitors = xpath.select(`*[${condition}]`, healthMonitors[0]);
+          if (monitors.length != 1) {
+            self.flagged = true;
+            monitors
+              .slice(1)
+              .forEach((configElement) =>
+                _markEndpoint(
+                  self.endpoint,
+                  `${configElement.tagName} element conflicts with ${monitors[0].tagName} on line ${monitors[0].lineNumber}`,
+                  configElement.lineNumber,
+                  configElement.columnNumber,
+                ),
+              );
+          }
+        }
+      }
+      // future: add other checks here.
+
+      return this.flagged;
+    } catch (e) {
+      console.log(e);
+      return false;
+    }
+  }
+}
+
+module.exports = {
+  plugin,
+  onBundle,
+  onProxyEndpoint,
+  onTargetEndpoint,
+};

@@ -1,0 +1,108 @@
+/*
+  Copyright © 2019-2020,2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+// CC005-unterminatedStrings.js
+
+const ruleId = require("../lintUtil.js").getRuleId(),
+  debug = require("debug")("apigeelint:" + ruleId);
+
+const plugin = {
+  ruleId,
+  name: "unterminatedStrings",
+  message: "Conditions should not include strings that are unterminated.",
+  fatal: false,
+  severity: 2, //error
+  nodeType: "Condition",
+  enabled: true,
+};
+
+const isOdd = (num) => num % 2;
+
+const onCondition = function (condition, cb) {
+  let flagged = false;
+
+  const addMessage = (msg) => {
+    condition.addMessage({
+      source: condition.getExpression(),
+      line: condition.getElement().lineNumber,
+      column: condition.getElement().columnNumber,
+      plugin,
+      message: msg,
+    });
+    flagged = true;
+  };
+
+  try {
+    const truthTable = condition.getTruthTable(),
+      values = truthTable.getVals(),
+      tokens = truthTable.getTokens(),
+      source = condition.getSource();
+
+    debug(`source(${source})`);
+    debug(`values(` + JSON.stringify(values) + `)`);
+    debug(`tokens(` + JSON.stringify(tokens) + `)`);
+    const ast = truthTable.getAST();
+
+    debug(`ast(` + JSON.stringify(ast, null, 2) + `)`);
+
+    // let invalid = tokens.filter( t => t.valid == false);
+    // invalid.forEach( t => {
+    //   condition.addMessage({
+    //     source: condition.getExpression(),
+    //     line: condition.getElement().lineNumber,
+    //     column: condition.getElement().columnNumber,
+    //     plugin,
+    //     message: `invalid token. (${t.value})`
+    //   });
+    //   flagged = true;
+    // });
+
+    const constants = tokens.filter((t) => t.type == "constant");
+    constants.forEach((t) => {
+      debug(
+        `constant type(${typeof t.value}) value(${JSON.stringify(t.value)})`,
+      );
+      if (typeof t.value == "string") {
+        if (
+          (t.value.endsWith('"') && !t.value.startsWith('"')) ||
+          (!t.value.endsWith('"') && t.value.startsWith('"'))
+        ) {
+          addMessage(`Possible unterminated string: (${t.value})`);
+        }
+      }
+    });
+
+    const boundaries = tokens.filter((t) => t.type == "boundary");
+    debug(`boundaries(` + JSON.stringify(boundaries) + `)`);
+    debug(`boundaries.length(${boundaries.length})`);
+    if (isOdd(boundaries.length)) {
+      addMessage(
+        "unmatched parenthesis - possibly due to an unterminated string",
+      );
+    }
+  } catch (e) {
+    debug("exception: " + e);
+    addMessage(`Invalid Condition - cannot parse (${e.message})`);
+  }
+  if (typeof cb == "function") {
+    cb(null, flagged);
+  }
+};
+
+module.exports = {
+  plugin,
+  onCondition,
+};

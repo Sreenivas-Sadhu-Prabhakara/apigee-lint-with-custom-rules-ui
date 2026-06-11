@@ -1,0 +1,141 @@
+/*
+  Copyright © 2019-2024, 2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+/* global describe, it */
+
+const assert = require("node:assert"),
+  path = require("node:path"),
+  util = require("node:util"),
+  ruleId = "PO012",
+  debug = require("debug")("apigeelint:" + ruleId),
+  bl = require("../../lib/package/bundleLinter.js");
+
+describe(`PO012 - AssignToHygiene`, function () {
+  this.timeout(15000);
+  it("should generate the expected errors", (done) => {
+    const configuration = {
+      debug: true,
+      source: {
+        type: "filesystem",
+        path: path.resolve(
+          __dirname,
+          "../fixtures/resources/PO012-assignToHygiene/apiproxy",
+        ),
+        bundleType: "apiproxy",
+      },
+      excluded: {},
+      setExitCode: false,
+      output: () => {}, // suppress output
+    };
+
+    debug(`PO012 configuration: ${util.format(configuration)}`);
+    bl.lint(configuration, (bundle) => {
+      const items = bundle.getReport();
+      assert.ok(items);
+      assert.ok(items.length);
+
+      const expected = {
+        "AM-Inject-Proxy-Revision-Header.xml": [
+          {
+            message: "unnecessary AssignTo with no named message",
+            line: 7,
+            column: 3,
+          },
+        ],
+        "AM-Modify-Request-Remove-ApiKey.xml": [
+          {
+            message: "unnecessary AssignTo with no named message",
+            line: 19,
+            column: 5,
+          },
+        ],
+        "AM-SetCorsSecurityHeaders.xml": [
+          {
+            message: "unnecessary AssignTo with no named message",
+            line: 28,
+            column: 5,
+          },
+        ],
+        "AM-AssignProxyFlowName.xml": [
+          {
+            message: "unnecessary AssignTo with no named message",
+            line: 12,
+            column: 5,
+          },
+        ],
+        "AM-AddCORS.xml": [
+          {
+            message: "unnecessary AssignTo with no named message",
+            line: 16,
+            column: 5,
+          },
+        ],
+        "AM-MultipleAssignTo.xml": [
+          {
+            message: "extraneous AssignTo element",
+            line: 3,
+            column: 3,
+          },
+        ],
+        "AM-UnsupportedTransport.xml": [
+          {
+            message: "unsupported transport attribute in AssignTo element",
+            line: 2,
+            column: 3,
+          },
+        ],
+        "AM-UnrecognizedType.xml": [
+          {
+            message: "unrecognized type attribute in AssignTo",
+            line: 2,
+            column: 3,
+          },
+        ],
+        "AM-NoAssignTo.xml": [],
+        "AM-ValidAssignTo.xml": [],
+      };
+
+      Object.keys(expected).forEach((policyName, caseNum) => {
+        debug(`policyName: ${policyName}`);
+        const policyItem = items.find((item) =>
+          item.filePath.endsWith(policyName),
+        );
+        const po012Messages = policyItem
+          ? policyItem.messages.filter((m) => m.ruleId == "PO012")
+          : [];
+
+        assert.equal(
+          po012Messages.length,
+          expected[policyName].length,
+          `Unexpected message count for ${policyName}`,
+        );
+
+        po012Messages.forEach((m) => assert.equal(m.severity, 1));
+
+        expected[policyName].forEach((item, ix) => {
+          Object.keys(item).forEach((key) => {
+            assert.equal(
+              po012Messages[ix][key],
+              item[key],
+              `${policyName} case(${caseNum}) message(${ix}) key(${key})`,
+            );
+          });
+        });
+      });
+      done();
+    });
+  });
+});

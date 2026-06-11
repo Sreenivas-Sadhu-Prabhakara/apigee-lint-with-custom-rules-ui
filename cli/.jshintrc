@@ -1,0 +1,10 @@
+{
+  "strict": "implied",
+  "esversion": 6,
+  "globals": {
+    "context": true,
+    "properties": true,
+    "httpClient": true,
+    "crypto": true
+  }
+}

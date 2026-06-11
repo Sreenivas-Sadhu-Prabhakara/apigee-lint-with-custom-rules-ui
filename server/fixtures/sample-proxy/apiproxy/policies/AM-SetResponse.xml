@@ -1,0 +1,7 @@
+<AssignMessage name="AM-SetResponse">
+  <DisplayName>AM-SetResponse</DisplayName>
+  <AssignTo createNew="false" transport="http" type="response"/>
+  <Set>
+    <Payload contentType="application/json">{"ok":true}</Payload>
+  </Set>
+</AssignMessage>

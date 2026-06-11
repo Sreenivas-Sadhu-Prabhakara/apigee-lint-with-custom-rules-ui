@@ -1,0 +1,20 @@
+{
+  "name": "apigeelint-rule-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "apigeelint fork + Rule Studio: author custom lint rules in a UI and bundle them into a downloadable CLI (npm + Docker).",
+  "scripts": {
+    "setup": "npm --prefix cli install && npm --prefix server install && npm --prefix ui install",
+    "build:ui": "npm --prefix ui run build",
+    "dev:server": "npm --prefix server run dev",
+    "dev:ui": "npm --prefix ui run dev",
+    "start": "npm run build:ui && npm --prefix server start",
+    "cli": "node cli/cli.js",
+    "pack:cli": "cd cli && npm pack --pack-destination ../dist",
+    "docker:build": "docker build -t apigeelint-custom ."
+  },
+  "workspaces": [],
+  "engines": {
+    "node": ">= 20"
+  }
+}

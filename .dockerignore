@@ -1,0 +1,10 @@
+**/node_modules
+cli/node_modules
+server/node_modules
+ui/node_modules
+ui/dist
+dist
+.git
+**/.DS_Store
+docs
+*.md

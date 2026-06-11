@@ -1,0 +1,10 @@
+<MessageLogging name="ML-test-invalid4">
+    <CloudLogging>
+        <LogName>projects/my-project/logs/my-log</LogName>
+        <Message>my-message</Message>
+    </CloudLogging>
+    <CloudLogging>
+        <LogName>projects/my-project/logs/my-log</LogName>
+        <Message>my-message</Message>
+    </CloudLogging>
+</MessageLogging>

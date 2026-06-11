@@ -1,0 +1,91 @@
+/*
+  Copyright © 2019-2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+const lintUtil = require("../lintUtil.js"),
+  ruleId = lintUtil.getRuleId(),
+  plugin = {
+    ruleId,
+    name: "Check for not well-formed XML",
+    message: "not well formed XML.",
+    fatal: true,
+    severity: 2, //1=warn, 2=error
+    nodeType: "Bundle",
+    enabled: true,
+  },
+  debug = require("debug")("apigeelint:BN011"),
+  fs = require("node:fs"),
+  path = require("node:path"),
+  { /* XMLParser, XMLBuilder,*/ XMLValidator } = require("fast-xml-parser");
+
+const onPolicy = function (policy, cb) {
+  let flagged = false;
+  const thisBundle = policy.getBundle();
+  // sometimes the fileName is fully Qualified, sometimes not!
+  const fqPath = lintUtil.isFullyQualified(policy.fileName)
+    ? policy.fileName
+    : path.join(thisBundle.root, "policies", policy.fileName);
+  debug(`policy filename: ${fqPath}`);
+  const content = fs.readFileSync(fqPath, "utf-8"),
+    result = XMLValidator.validate(content, {});
+  if (result.err) {
+    policy.addMessage({
+      plugin,
+      message:
+        `Step ${policy.getName()} configuration` +
+        ` is not well-formed XML (${result.err.msg}).`,
+      line: result.err.line,
+      column: result.err.col,
+    });
+    flagged = true;
+  }
+
+  if (typeof cb == "function") {
+    cb(null, flagged);
+  }
+};
+
+const endpointHandler = (endpointType) =>
+  function (endpoint, cb) {
+    let flagged = false;
+    const content = fs.readFileSync(endpoint.getFileName(), "utf-8"),
+      result = XMLValidator.validate(content, {});
+    if (result.err) {
+      endpoint.addMessage({
+        plugin,
+        message:
+          `Configuration for ${endpointType} endpoint` +
+          ` ${endpoint.getName()} is not well-formed XML (${result.err.msg}).`,
+        line: result.err.line,
+        column: result.err.col,
+      });
+      flagged = true;
+    }
+
+    if (typeof cb == "function") {
+      cb(null, flagged);
+    }
+  };
+
+const onProxyEndpoint = endpointHandler("proxy");
+
+const onTargetEndpoint = endpointHandler("target");
+
+module.exports = {
+  plugin,
+  onPolicy,
+  onProxyEndpoint,
+  onTargetEndpoint,
+};

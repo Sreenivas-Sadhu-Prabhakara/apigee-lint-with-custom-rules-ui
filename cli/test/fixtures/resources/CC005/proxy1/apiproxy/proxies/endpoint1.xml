@@ -1,0 +1,87 @@
+<ProxyEndpoint name="endpoint1">
+  <Description>Proxy Endpoint 1</Description>
+  <HTTPProxyConnection>
+    <BasePath>/CC005-unterminated-string-in-conditional</BasePath>
+  </HTTPProxyConnection>
+
+  <FaultRules>
+    <FaultRule name="serviceCalloutError">
+      <!-- apigeelint disable=BN010 -->
+      <Step>
+        <Name>AM-This-Policy-Does-not-Exist</Name>
+      </Step>
+      <!-- apigeelint disable=CC003,CC004 -->
+      <Condition>servicecallout.GetAutoPolicyServiceCallout.failed == true ||
+      servicecallout.GetAllAutoVehiclesServiceCallout.failed == true ||
+      servicecallout.GetAllAutoCoveragesServiceCallout.failed == true ||
+      servicecallout.GetAllAutoDriversServiceCallout.failed == true ||
+      servicecallout.SubmitAutoPolicyChangeServiceCallout.failed == true ||
+      servicecallout.GetAnAutoVehicleServiceCallout.failed == true
+      </Condition>
+    </FaultRule>
+  </FaultRules>
+
+  <PreFlow name="PreFlow">
+      <Request>
+        <Step>
+          <Name>AM-Response</Name>
+          <!-- error, unterminated string in simple statement -->
+          <Condition>request.verb = "OPTIONS</Condition>
+        </Step>
+      </Request>
+  </PreFlow>
+  <PostFlow name="PostFlow"/>
+  <PostClientFlow name="PostFlow"/>
+
+  <Flows>
+
+    <Flow name="flow1">
+      <Request>
+      </Request>
+      <Response>
+        <Step>
+          <Name>AM-Response</Name>
+        </Step>
+      </Response>
+      <!-- error, unterminated string within parens -->
+      <Condition>(proxy.pathsuffix MatchesPath "/CC005-t1) and (request.verb = "GET")</Condition>
+    </Flow>
+
+    <Flow name="flow2">
+      <Request>
+      </Request>
+      <Response>
+        <Step>
+          <Name>AM-Response</Name>
+        </Step>
+      </Response>
+      <!-- error, unterminated string in compound statement -->
+      <Condition>proxy.pathsuffix MatchesPath "/CC005-t2 and request.verb = "GET"</Condition>
+    </Flow>
+
+    <Flow name="f3">
+      <Request>
+      </Request>
+      <Response/>
+      <!-- a valid Condition, not an unterminated string -->
+      <Condition>
+        request.verb IsNot "GET"
+        and !proxy.pathsuffix MatchesPath "/path"
+      </Condition>
+    </Flow>
+
+    <Flow name="unknown request">
+      <Request>
+        <Step>
+          <Name>RF-UnknownRequest</Name>
+        </Step>
+      </Request>
+      <Response>
+      </Response>
+    </Flow>
+
+  </Flows>
+
+  <RouteRule name="NoRouteRule"/>
+
+</ProxyEndpoint>

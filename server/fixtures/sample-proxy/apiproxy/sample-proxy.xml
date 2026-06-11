@@ -1,0 +1,14 @@
+<APIProxy revision="1" name="sample-proxy">
+  <DisplayName>sample-proxy</DisplayName>
+  <Description>Tiny proxy used by Rule Studio to validate authored lint rules.</Description>
+  <Policies>
+    <Policy>AM-SetResponse</Policy>
+    <Policy>badName</Policy>
+  </Policies>
+  <ProxyEndpoints>
+    <ProxyEndpoint>default</ProxyEndpoint>
+  </ProxyEndpoints>
+  <TargetEndpoints>
+    <TargetEndpoint>default</TargetEndpoint>
+  </TargetEndpoints>
+</APIProxy>

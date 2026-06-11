@@ -1,0 +1,17 @@
+{
+  "name": "apigeelint-rule-studio-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend API for the apigeelint Rule Studio — authors custom lint rules into the CLI fork and packs the CLI for download.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">= 20"
+  }
+}

@@ -1,0 +1,113 @@
+/*
+  Copyright © 2019-2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+/* global describe, it */
+
+const testID = "PO040",
+  assert = require("node:assert"),
+  fs = require("node:fs"),
+  path = require("node:path"),
+  bl = require("../../lib/package/bundleLinter.js"),
+  plugin = require(bl.resolvePlugin(testID)),
+  Policy = require("../../lib/package/Policy.js"),
+  Dom = require("@xmldom/xmldom").DOMParser,
+  rootDir = path.resolve(__dirname, "../fixtures/resources/PO040"),
+  debug = require("debug")(`apigeelint:${testID}-test`);
+
+const loadPolicy = (sourceDir, shortFileName, profile) => {
+  const fqPath = path.join(sourceDir, shortFileName),
+    policyXml = fs.readFileSync(fqPath).toString("utf-8"),
+    doc = new Dom().parseFromString(policyXml),
+    p = new Policy(rootDir, shortFileName, this, doc),
+    bundle = { profile };
+
+  p.getElement = () => doc.documentElement;
+  p.getBundle = () => bundle;
+  p.fileName = shortFileName;
+  return p;
+};
+
+describe(`${testID} - ExtractVariables/JSONPath returns correct results for policies`, () => {
+  const testOneForProfile = (profile) => {
+    const expectedErrorMessages = require(
+      path.join(rootDir, `${profile}-messages.js`),
+    );
+
+    return (shortFileName) => {
+      const policy = loadPolicy(rootDir, shortFileName, profile),
+        policyType = policy.getType();
+      let expected = expectedErrorMessages[shortFileName] || [];
+      if (!Array.isArray(expected)) {
+        expected = [expected];
+      }
+      expected = expected.map((item) =>
+        typeof item == "string" ? { severity: 2, message: item } : item,
+      );
+
+      it(`should ${expected ? "flag" : "pass"} ${shortFileName} in profile ${profile}`, () => {
+        assert.notEqual(
+          policyType,
+          undefined,
+          `${policyType} should be defined`,
+        );
+
+        plugin.onPolicy(policy, (e, foundIssues) => {
+          assert.equal(undefined, e, "should be undefined");
+          const messages = policy.getReport().messages;
+          assert.ok(messages, "messages should exist");
+          if (expected && expected.length) {
+            assert.equal(true, foundIssues, "should be issues");
+            assert.equal(
+              messages.length,
+              expected.length,
+              "unexpected number of messages",
+            );
+            debug(`${shortFileName}: messages: ${JSON.stringify(messages)}`);
+            expected.forEach((expectation, ix) => {
+              debug(`${shortFileName}: message[0]: ${messages[0].message}`);
+              assert.ok(messages[ix].message, "did not find message member");
+              const found = messages.find((item) =>
+                item.message.startsWith(expectation.message),
+              );
+
+              assert.ok(
+                found,
+                `did not find expected message (${expectation.message}... not in ${messages.map((m) => m.message).join(",")}`,
+              );
+              assert.equal(found.severity, expectation.severity);
+            });
+          } else {
+            debug(`${shortFileName}: messages: ${JSON.stringify(messages)}`);
+            assert.equal(false, foundIssues, "should be no issues");
+            assert.equal(messages.length, 0, "unexpected number of messages");
+          }
+        });
+      });
+    };
+  };
+
+  const files = fs.readdirSync(rootDir);
+  it(`should find tests`, () => {
+    assert.ok(files.length, "tests not found");
+  });
+
+  ["apigee", "apigeex"].forEach((profile) => {
+    const testOne = testOneForProfile(profile);
+    files
+      .filter((shortFileName) => shortFileName.endsWith(".xml"))
+      .forEach(testOne);
+  });
+});

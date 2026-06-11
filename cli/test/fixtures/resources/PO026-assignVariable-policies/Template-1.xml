@@ -1,0 +1,18 @@
+<AssignMessage name='Template-1'>
+  <AssignVariable>
+    <Name>assigned</Name>
+    <Template>
+{
+    "organization": "{organization.name}",
+    "environment": "{environment.name}",
+    "region":"{system.region.name}",
+    "pod":"{system.pod.name}",
+    "messageId":"{messageid}"
+}
+</Template>
+  </AssignVariable>
+  <AssignVariable>
+    <Name>timeStamp</Name>
+    <Template>{timeFormatUTCMs('yyyy-MM-dd HH-mm-ss',system.timestamp)} UTC</Template>
+  </AssignVariable>
+</AssignMessage>

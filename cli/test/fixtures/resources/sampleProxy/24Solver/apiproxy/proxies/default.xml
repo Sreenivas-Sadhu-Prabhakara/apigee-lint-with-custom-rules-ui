@@ -1,0 +1,114 @@
+<!--
+  Copyright 2019 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+ -->
+
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ProxyEndpoint name="default">
+    <Description/>
+    <FaultRules>
+        <FaultRule name="ExtractVariablesFault">
+            <Step>
+                <Name>ExtractVariablesFault</Name>
+            </Step>
+            <Condition>(fault.name = "FailedToResolveAPIKey")</Condition>
+        </FaultRule>
+        <FaultRule name="ExtractVariablesFault">
+            <Step>
+                <Name>ExtractVariablesFault</Name>
+            </Step>
+        </FaultRule>
+    </FaultRules>
+    <DefaultFaultRule name="default-fault">
+        <Step>
+            <Name>Default-message</Name>
+        </Step>
+    </DefaultFaultRule>
+    <PreFlow name="PreFlow">
+        <Request>
+            <Step>
+                <Name>KV-config-values</Name>
+            </Step>
+            <Step>
+                <FaultRules/>
+                <Name>JSONThreatProtection</Name>
+                <Condition>request.verb="POST"</Condition>
+            </Step>
+            <Step>
+                <FaultRules/>
+                <Name>regExLookAround</Name>
+                <Condition>request.verb="POST"</Condition>
+            </Step>
+            <Step>
+                <Name>AssignMessage.CopyRequest</Name>
+            </Step>
+            <Step>
+                <FaultRules/>
+                <Name>ExtractParamVariables</Name>
+                <Condition>request.verb="GET"</Condition>
+            </Step>
+            <Step>
+                <FaultRules/>
+                <Name>ExtractPayloadVariables</Name>
+                <Condition>{wackyvar.foo} and request.verb="POST" and request.header.contenttype="application/json" or {foovar} or {wackyvar.foo} and request.verb="POST" and request.header.contenttype="application/json" or {foovar} or {wackyvar.foo} and request.verb="POST" and request.header.contenttype="application/json" or {foovar} or {wackyvar.foo} and request.verb="POST" and request.header.contenttype="application/json" or {foovar}</Condition>
+            </Step>
+            <Step></Step>
+            <Step>
+                <Name>publishPurchaseDetails</Name>
+            </Step>
+            <Step>
+                <Name>Lookup-Cache-1</Name>
+            </Step>
+            <Step>
+                <Name>publishPurchaseDetails</Name>
+            </Step>
+        </Request>
+        <Response/>
+    </PreFlow>
+    <Flows>
+        <Flow name="flow1">
+            <Condition/>
+        </Flow>
+        <Flow name="flow2">
+            <Condition/>
+        </Flow>
+    </Flows>
+    <PostFlow name="PostFlow">
+        <Request/>
+        <Response>
+            <!-- <Step><FaultRules/><Name>jsCalculate</Name></Step> -->
+        </Response>
+    </PostFlow>
+    <RouteRule name="foo">
+        <Condition>(proxy.pathsuffix MatchesPath "/{version}/profile/{profile.id}/pin**")</Condition>
+        <TargetEndpoint>foo</TargetEndpoint>
+    </RouteRule>
+    <RouteRule name="bar">
+        <Condition>(proxy.pathsuffix MatchesPath "/{version}/profile/{profile.id}/preferredversion")</Condition>
+        <TargetEndpoint>bar</TargetEndpoint>
+    </RouteRule>
+    <RouteRule name="noCond1">
+        <Condition></Condition>
+        <TargetEndpoint>nc1</TargetEndpoint>
+    </RouteRule>
+    <RouteRule name="noCond2">
+        <TargetEndpoint>nc2</TargetEndpoint>
+    </RouteRule>
+    <HTTPProxyConnection>
+        <BasePath>/24solver</BasePath>
+        <VirtualHost>default</VirtualHost>
+        <VirtualHost>secure</VirtualHost>
+    </HTTPProxyConnection>
+    <RouteRule name="noroute" />
+</ProxyEndpoint>

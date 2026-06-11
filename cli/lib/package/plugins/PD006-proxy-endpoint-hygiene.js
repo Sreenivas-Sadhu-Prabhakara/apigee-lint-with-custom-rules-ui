@@ -1,0 +1,87 @@
+/*
+  Copyright © 2019-2020, 2025-2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+const ruleId = require("../lintUtil.js").getRuleId(),
+  debug = require("debug")("apigeelint:" + ruleId);
+
+const plugin = {
+  ruleId,
+  name: "ProxyEndpoint hygiene",
+  message: "Check ProxyEndpoint hygiene.",
+  fatal: false,
+  severity: 2, // 1 = warn, 2 = error
+  nodeType: "Endpoint",
+  enabled: true,
+};
+
+const onProxyEndpoint = function (endpoint, cb) {
+  const name = endpoint.getName();
+  let flagged = false;
+  const mark = (elt, message, severity) => {
+    endpoint.addMessage({
+      plugin,
+      line: elt.lineNumber,
+      column: elt.columnNumber,
+      message,
+      severity: severity || plugin.severity,
+    });
+    flagged = true;
+  };
+
+  try {
+    debug(`onProxyEndpoint name(${name})`);
+    // Check for BasePath
+    const hpc = endpoint.getHTTPProxyConnection();
+    if (hpc) {
+      // a sharedflowbundle will not have an HTTPProxyConnection
+      const basepathElts = hpc.select("./BasePath");
+      if (!basepathElts) {
+        mark(hpc.getElement(), "Error performing selection.");
+      } else if (basepathElts.length == 0) {
+        mark(hpc.getElement(), "Missing required BasePath element.");
+      } else if (basepathElts.length != 1) {
+        mark(hpc.getElement(), "More than one BasePath element found.");
+      }
+    }
+
+    // Check for Request in PostClientFlow
+    const pcf = endpoint.getPostClientFlow();
+    if (pcf) {
+      const requestFlow = pcf.getFlowRequest();
+      if (requestFlow) {
+        const steps = requestFlow.getSteps();
+        // If there are steps then, it's an error. otherwise, a warning.
+        mark(
+          pcf.getElement(),
+          "Request is not supported here.",
+          steps && steps.length ? 2 : 1,
+        );
+      }
+    }
+
+    if (typeof cb == "function") {
+      cb(null, flagged);
+    }
+  } catch (exc1) {
+    console.error("exception in PD006: " + exc1);
+    debug(`onProxyEndpoint exc(${exc1})`);
+  }
+};
+
+module.exports = {
+  plugin,
+  onProxyEndpoint,
+};

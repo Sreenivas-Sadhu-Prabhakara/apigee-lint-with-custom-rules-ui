@@ -1,0 +1,123 @@
+/*
+  Copyright © 2019-2020,2025,2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+const //util = require('util'),
+  xpath = require("xpath"),
+  ruleId = require("../lintUtil.js").getRuleId(),
+  debug = require("debug")("apigeelint:" + ruleId);
+
+const plugin = {
+  ruleId,
+  name: "Step Structure",
+  message: "Steps with doubled elements or unsupported elements are wrong.",
+  fatal: false,
+  severity: 2, // 1 = warn, 2 = error
+  nodeType: "Step",
+  enabled: true,
+};
+
+const onStep = (step, cb) => {
+  debug("> onStep()");
+  let flagged = false;
+  const source = step.getSource(),
+    element = step.getElement(),
+    line = element.lineNumber,
+    column = element.columnNumber,
+    addMessage = (message) => {
+      step.addMessage({ source, line, column, plugin, message });
+      flagged = true;
+    };
+
+  // // 1. FaultRules within Step (comes from UI)
+  // let innerFaultRules = xpath.select("FaultRules", element);
+  // if (innerFaultRules && innerFaultRules.length > 0) {
+  //   addMessage("FaultRules within a Step are not supported.");
+  // }
+
+  const nameChildren = xpath.select("Name", element);
+  debug(`step(${line},${column}): Name elements: ` + nameChildren.length);
+  // check exactly one Name child
+
+  if (nameChildren.length > 1) {
+    addMessage("Multiple Name elements for Step");
+  }
+  // covered by ST001
+  // else if (nameChildren.length == 0) {
+  //   addMessage("Missing Name element for Step");
+  // }
+  if (nameChildren.length >= 1) {
+    // There is at least one Name element.
+    // There should be exactly one child elements beneath, a TEXT node.
+    const childElements = xpath.select("*", nameChildren[0]);
+    if (childElements.length > 0) {
+      addMessage("Stray element under Name element");
+    } else {
+      // check text value
+      const textNodes = xpath.select("text()", nameChildren[0]);
+      if (textNodes.length == 1) {
+        const embeddedStepName = textNodes[0].data;
+        if (embeddedStepName != embeddedStepName.trim()) {
+          addMessage("Name value should not have leading/trailing whitespace");
+        }
+      }
+      // covered by ST001
+      // else {
+      //   addMessage("empty Name element");
+      // }
+    }
+  }
+
+  const condChildren = xpath.select("Condition", element);
+  // check at most one Condition child
+  if (condChildren.length > 1) {
+    addMessage("Multiple Condition elements for Step");
+  } else if (condChildren.length == 1) {
+    // single Condition element
+    // check for child elements beneath
+    const childElements = xpath.select("*", condChildren[0]);
+    if (childElements.length > 0) {
+      addMessage("Stray element under Condition element");
+    } else {
+      // check text value
+      const textNodes = xpath.select("text()", condChildren[0]);
+      if (textNodes.length == 1) {
+        const conditionText = textNodes[0].data;
+        if (!conditionText.trim()) {
+          addMessage("empty Condition element");
+        }
+      } else if (textNodes.length == 0) {
+        addMessage("empty Condition element");
+      }
+    }
+  }
+
+  const allChildren = xpath.select("*", element);
+  debug(`step(${line},${column}): child elements: ` + allChildren.length);
+  allChildren.forEach((child) => {
+    if (["Name", "Condition", "FaultRules"].indexOf(child.nodeName) == -1) {
+      addMessage(`Stray element (${child.nodeName}) under Step`);
+    }
+  });
+
+  if (typeof cb == "function") {
+    cb(null, flagged);
+  }
+};
+
+module.exports = {
+  plugin,
+  onStep,
+};
