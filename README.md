@@ -5,6 +5,10 @@ validate them against a sample proxy, and **bundle them into a downloadable CLI*
 your team can install via **npm** or **Docker** — with your rules baked in, no extra plugin-install
 step.
 
+> **▶ Live UI demo:** https://sreenivas-sadhu-prabhakara.github.io/apigee-lint-with-custom-rules-ui/
+> — a static, backend-free preview (browse rules, open the editor, see the publish flow). Authoring
+> and building need the backend, so clone the repo and run `npm start` for the real thing.
+
 ```
 ┌─────────────┐   writes plugin   ┌──────────────────────┐   npm pack /   ┌──────────────┐
 │  Rule Studio │ ───── .js ──────▶ │  apigeelint fork      │ ── docker ──▶ │  Download    │
