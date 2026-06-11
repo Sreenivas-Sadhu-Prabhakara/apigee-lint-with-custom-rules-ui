@@ -46,15 +46,23 @@ function parseReport(stdout) {
 }
 
 async function validateSpec(spec) {
+  // For unsaved (new) rules there's no ruleId yet. Generate with a temporary id
+  // so the plugin descriptor — and therefore the findings it emits — carry an id
+  // we can match on. Otherwise the preview would always report "did not fire".
+  // The id MUST satisfy the loader's pattern ^EX-[A-Z]{2}[0-9]{3}$ or the file is
+  // silently rejected from the external plugins directory.
+  const targetId = spec.ruleId || "EX-TM000";
+  const genSpec = { ...spec, ruleId: targetId };
+
   let gen;
   try {
-    gen = generatePlugin(spec);
+    gen = generatePlugin(genSpec);
   } catch (e) {
     return { ok: false, stage: "generate", error: e.message, code: gen ? gen.code : null };
   }
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rule-studio-"));
-  const fileName = `${fileBaseName({ ...spec, ruleId: spec.ruleId || "EX-TMP000" })}.js`;
+  const fileName = `${fileBaseName(genSpec)}.js`;
   fs.writeFileSync(path.join(tmpDir, fileName), gen.code, "utf8");
 
   try {
@@ -81,7 +89,6 @@ async function validateSpec(spec) {
       };
     }
 
-    const targetId = spec.ruleId || "EX-TMP000";
     const findings = [];
     for (const fileReport of report) {
       for (const msg of fileReport.messages || []) {

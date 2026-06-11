@@ -9,6 +9,18 @@ step.
 > — a static, backend-free preview (browse rules, open the editor, see the publish flow). Authoring
 > and building need the backend, so clone the repo and run `npm start` for the real thing.
 
+## Screenshots
+
+**Rule library** — every custom rule lives in the CLI fork (`cli/externalPlugins/`) and ships inside
+every download:
+
+![Rule Studio — custom rule library](docs/images/rule-studio-rules.png)
+
+**Authoring + live validation** — pick a guided template, validate against a sample proxy (this runs
+the *real* CLI, so a finding here is a finding after download), and review the generated plugin:
+
+![Rule Studio — rule editor with live validation](docs/images/rule-studio-editor.png)
+
 ```
 ┌─────────────┐   writes plugin   ┌──────────────────────┐   npm pack /   ┌──────────────┐
 │  Rule Studio │ ───── .js ──────▶ │  apigeelint fork      │ ── docker ──▶ │  Download    │
